@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Stream Status</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        :root {
+            --online: #46b946;
+            --offline: #d9534f;
+            --closed: #666;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #6441a5;
+        }
+
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #6441a5;
+            color: white;
+        }
+
+        .filter-btn.active {
+            background: #7a5db6;
+        }
+
+        .streamer {
+            background: #2a2a2a;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        .streamer:hover {
+            transform: translateX(5px);
+        }
+
+        .streamer a {
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            align-items: center;
+            flex-grow: 1;
+        }
+
+        .logo {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+        }
+
+        .status-icon {
+            font-size: 12px;
+            margin-right: 8px;
+        }
+
+        .online .status-icon { color: var(--online); }
+        .offline .status-icon { color: var(--offline); }
+        .closed { background: #333; }
+
+        .stream-info {
+            flex-grow: 1;
+        }
+
+        .game {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Twitch Stream Status</h1>
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="online">Online</button>
+            <button class="filter-btn" data-filter="offline">Offline</button>
+        </div>
+        <div id="streamers"></div>
+    </div>
+
+    <script>
+        const USERS = [
+            "ESL_SC2", "OgamingSC2", "cretetion", "freecodecamp",
+            "storbeck", "habathcx", "RobotCaleb", "noobs2ninjas"
+        ];
+        const API_BASE = 'https://twitch-proxy.freecodecamp.rocks/twitch-api';
+        
+        let streamersData = [];
+        
+        async function fetchStreamerData(username) {
+            try {
+                // Fetch channel data
+                const channelRes = await fetch(`${API_BASE}/channels/${username}`);
+                if (!channelRes.ok) return { status: 'closed', username };
+                
+                const channelData = await channelRes.json();
+                
+                // Fetch stream data
+                const streamRes = await fetch(`${API_BASE}/streams/${username}`);
+                const streamData = await streamRes.json();
+                
+                return {
+                    username,
+                    name: channelData.display_name,
+                    logo: channelData.logo || 'https://via.placeholder.com/50',
+                    url: channelData.url,
+                    status: streamData.stream ? 'online' : 'offline',
+                    game: streamData.stream?.game,
+                    title: streamData.stream?.channel.status
+                };
+            } catch (error) {
+                console.error(`Error fetching data for ${username}:`, error);
+                return { status: 'error', username };
+            }
+        }
+
+        function createStreamerElement(streamer) {
+            const div = document.createElement('div');
+            div.className = `streamer ${streamer.status}`;
+            
+            if (streamer.status === 'closed') {
+                div.innerHTML = `
+                    <div class="stream-info">
+                        <div>${streamer.username}</div>
+                        <div class="status">Account Closed</div>
+                    </div>
+                `;
+                return div;
+            }
+
+            const onlineStatus = streamer.status === 'online' ? 
+                `<span class="game">Playing: ${streamer.game}</span>` : '';
+
+            div.innerHTML = `
+                <a href="${streamer.url}" target="_blank">
+                    <img class="logo" src="${streamer.logo}" alt="${streamer.name}">
+                    <div class="stream-info">
+                        <div>
+                            <i class="fas fa-circle status-icon"></i>
+                            ${streamer.name}
+                        </div>
+                        ${streamer.status === 'online' ? 
+                            `<div>${streamer.title}</div>${onlineStatus}` : 
+                            '<div>Offline</div>'}
+                    </div>
+                </a>
+            `;
+            return div;
+        }
+
+        function updateStreamers(filter = 'all') {
+            const container = document.getElementById('streamers');
+            container.innerHTML = '';
+            
+            const filtered = streamersData.filter(s => {
+                if (filter === 'online') return s.status === 'online';
+                if (filter === 'offline') return s.status !== 'online';
+                return true;
+            });
+
+            filtered.forEach(streamer => {
+                container.appendChild(createStreamerElement(streamer));
+            });
+        }
+
+        // Initial load
+        window.addEventListener('load', async () => {
+            streamersData = await Promise.all(USERS.map(fetchStreamerData));
+            updateStreamers();
+            
+            // Filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => 
+                        b.classList.remove('active'));
+                    btn.classList.add('active');
+                    updateStreamers(btn.dataset.filter);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
